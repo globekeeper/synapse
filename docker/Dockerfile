@@ -28,10 +28,7 @@ FROM docker.io/python:${PYTHON_VERSION}-slim as builder
 # Here we use it to set up a cache for apt, to improve rebuild speeds on
 # slow connections.
 #
-RUN \
-   --mount=type=cache,target=/var/cache/apt,sharing=locked \
-   --mount=type=cache,target=/var/lib/apt,sharing=locked \
- apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     libjpeg-dev \
@@ -56,8 +53,7 @@ COPY synapse/python_dependencies.py /synapse/synapse/python_dependencies.py
 # used while you develop on the source
 #
 # This is aiming at installing the `install_requires` and `extras_require` from `setup.py`
-RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install --prefix="/install" --no-warn-script-location \
+RUN pip install --prefix="/install" --no-warn-script-location \
     /synapse[all]
 
 # Copy over the rest of the project
@@ -79,10 +75,7 @@ LABEL org.opencontainers.image.documentation='https://github.com/matrix-org/syna
 LABEL org.opencontainers.image.source='https://github.com/matrix-org/synapse.git'
 LABEL org.opencontainers.image.licenses='Apache-2.0'
 
-RUN \
-   --mount=type=cache,target=/var/cache/apt,sharing=locked \
-   --mount=type=cache,target=/var/lib/apt,sharing=locked \
-  apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     curl \
     gosu \
     libjpeg62-turbo \
@@ -100,7 +93,7 @@ COPY ./docker/conf /conf
 
 EXPOSE 8008/tcp 8009/tcp 8448/tcp
 
-ENTRYPOINT ["/start.py"]
+ENTRYPOINT [ "python" ]
 
 HEALTHCHECK --start-period=5s --interval=15s --timeout=5s \
     CMD curl -fSs http://localhost:8008/health || exit 1
