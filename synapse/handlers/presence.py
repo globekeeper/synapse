@@ -101,14 +101,14 @@ state_transition_counter = Counter(
 
 # If a user was last active in the last LAST_ACTIVE_GRANULARITY, consider them
 # "currently_active"
-LAST_ACTIVE_GRANULARITY = 60 * 1000
+LAST_ACTIVE_GRANULARITY = 10 * 60 * 1000
 
 # How long to wait until a new /events or /sync request before assuming
 # the client has gone.
 SYNC_ONLINE_TIMEOUT = 30 * 1000
 
 # How long to wait before marking the user as idle. Compared against last active
-IDLE_TIMER = 5 * 60 * 1000
+IDLE_TIMER = 12 * 60 * 1000
 
 # How often we expect remote servers to resend us presence.
 FEDERATION_TIMEOUT = 30 * 60 * 1000
