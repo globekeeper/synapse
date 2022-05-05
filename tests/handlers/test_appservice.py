@@ -15,6 +15,8 @@
 from typing import Dict, Iterable, List, Optional
 from unittest.mock import Mock
 
+from parameterized import parameterized
+
 from twisted.internet import defer
 from twisted.test.proto_helpers import MemoryReactor
 
@@ -59,11 +61,11 @@ class AppServiceHandlerTestCase(unittest.TestCase):
         self.event_source = hs.get_event_sources()
 
     def test_notify_interested_services(self):
-        interested_service = self._mkservice(is_interested=True)
+        interested_service = self._mkservice(is_interested_in_event=True)
         services = [
-            self._mkservice(is_interested=False),
+            self._mkservice(is_interested_in_event=False),
             interested_service,
-            self._mkservice(is_interested=False),
+            self._mkservice(is_interested_in_event=False),
         ]
 
         self.mock_as_api.query_user.return_value = make_awaitable(True)
@@ -85,7 +87,7 @@ class AppServiceHandlerTestCase(unittest.TestCase):
 
     def test_query_user_exists_unknown_user(self):
         user_id = "@someone:anywhere"
-        services = [self._mkservice(is_interested=True)]
+        services = [self._mkservice(is_interested_in_event=True)]
         services[0].is_interested_in_user.return_value = True
         self.mock_store.get_app_services.return_value = services
         self.mock_store.get_user_by_id.return_value = make_awaitable(None)
@@ -102,7 +104,7 @@ class AppServiceHandlerTestCase(unittest.TestCase):
 
     def test_query_user_exists_known_user(self):
         user_id = "@someone:anywhere"
-        services = [self._mkservice(is_interested=True)]
+        services = [self._mkservice(is_interested_in_event=True)]
         services[0].is_interested_in_user.return_value = True
         self.mock_store.get_app_services.return_value = services
         self.mock_store.get_user_by_id.return_value = make_awaitable({"name": user_id})
@@ -127,11 +129,11 @@ class AppServiceHandlerTestCase(unittest.TestCase):
 
         room_id = "!alpha:bet"
         servers = ["aperture"]
-        interested_service = self._mkservice_alias(is_interested_in_alias=True)
+        interested_service = self._mkservice_alias(is_room_alias_in_namespace=True)
         services = [
-            self._mkservice_alias(is_interested_in_alias=False),
+            self._mkservice_alias(is_room_alias_in_namespace=False),
             interested_service,
-            self._mkservice_alias(is_interested_in_alias=False),
+            self._mkservice_alias(is_room_alias_in_namespace=False),
         ]
 
         self.mock_as_api.query_alias.return_value = make_awaitable(True)
@@ -275,7 +277,7 @@ class AppServiceHandlerTestCase(unittest.TestCase):
         to be pushed out to interested appservices, and that the stream ID is
         updated accordingly.
         """
-        interested_service = self._mkservice(is_interested=True)
+        interested_service = self._mkservice(is_interested_in_event=True)
         services = [interested_service]
         self.mock_store.get_app_services.return_value = services
         self.mock_store.get_type_stream_id_for_appservice.return_value = make_awaitable(
@@ -304,7 +306,7 @@ class AppServiceHandlerTestCase(unittest.TestCase):
         Test sending out of order ephemeral events to the appservice handler
         are ignored.
         """
-        interested_service = self._mkservice(is_interested=True)
+        interested_service = self._mkservice(is_interested_in_event=True)
         services = [interested_service]
 
         self.mock_store.get_app_services.return_value = services
@@ -325,17 +327,45 @@ class AppServiceHandlerTestCase(unittest.TestCase):
             interested_service, ephemeral=[]
         )
 
-    def _mkservice(self, is_interested, protocols=None):
+    def _mkservice(
+        self, is_interested_in_event: bool, protocols: Optional[Iterable] = None
+    ) -> Mock:
+        """
+        Create a new mock representing an ApplicationService.
+
+        Args:
+            is_interested_in_event: Whether this application service will be considered
+                interested in all events.
+            protocols: The third-party protocols that this application service claims to
+                support.
+
+        Returns:
+            A mock representing the ApplicationService.
+        """
         service = Mock()
-        service.is_interested.return_value = make_awaitable(is_interested)
+        service.is_interested_in_event.return_value = make_awaitable(
+            is_interested_in_event
+        )
         service.token = "mock_service_token"
         service.url = "mock_service_url"
         service.protocols = protocols
         return service
 
-    def _mkservice_alias(self, is_interested_in_alias):
+    def _mkservice_alias(self, is_room_alias_in_namespace: bool) -> Mock:
+        """
+        Create a new mock representing an ApplicationService that is or is not interested
+        any given room aliase.
+
+        Args:
+            is_room_alias_in_namespace: If true, the application service will be interested
+                in all room aliases that are queried against it. If false, the application
+                service will not be interested in any room aliases.
+
+        Returns:
+            A mock representing the ApplicationService.
+        """
         service = Mock()
-        service.is_interested_in_alias.return_value = is_interested_in_alias
+        service.is_room_alias_in_namespace.return_value = is_room_alias_in_namespace
         service.token = "mock_service_token"
         service.url = "mock_service_url"
         return service
@@ -443,6 +473,7 @@ class ApplicationServicesHandlerSendEventsTestCase(unittest.HomeserverTestCase):
             to_device_messages,
             _otks,
             _fbks,
+            _device_list_summary,
         ) = self.send_mock.call_args[0]
 
         # Assert that this was the same to-device message that local_user sent
@@ -555,7 +586,15 @@ class ApplicationServicesHandlerSendEventsTestCase(unittest.HomeserverTestCase):
         service_id_to_message_count: Dict[str, int] = {}
 
         for call in self.send_mock.call_args_list:
-            service, _events, _ephemeral, to_device_messages, _otks, _fbks = call[0]
+            (
+                service,
+                _events,
+                _ephemeral,
+                to_device_messages,
+                _otks,
+                _fbks,
+                _device_list_summary,
+            ) = call[0]
 
             # Check that this was made to an interested service
             self.assertIn(service, interested_appservices)
@@ -597,6 +636,114 @@ class ApplicationServicesHandlerSendEventsTestCase(unittest.HomeserverTestCase):
         self._services.append(appservice)
 
         return appservice
+
+
+class ApplicationServicesHandlerDeviceListsTestCase(unittest.HomeserverTestCase):
+    """
+    Tests that the ApplicationServicesHandler sends device list updates to application
+    services correctly.
+    """
+
+    servlets = [
+        synapse.rest.admin.register_servlets_for_client_rest_resource,
+        login.register_servlets,
+        room.register_servlets,
+    ]
+
+    def prepare(self, reactor: MemoryReactor, clock: Clock, hs: HomeServer) -> None:
+        # Allow us to modify cached feature flags mid-test
+        self.as_handler = hs.get_application_service_handler()
+
+        # Mock ApplicationServiceApi's put_json, so we can verify the raw JSON that
+        # will be sent over the wire
+        self.put_json = simple_async_mock()
+        hs.get_application_service_api().put_json = self.put_json  # type: ignore[assignment]
+
+        # Mock out application services, and allow defining our own in tests
+        self._services: List[ApplicationService] = []
+        self.hs.get_datastores().main.get_app_services = Mock(
+            return_value=self._services
+        )
+
+    # Test across a variety of configuration values
+    @parameterized.expand(
+        [
+            (True, True, True),
+            (True, False, False),
+            (False, True, False),
+            (False, False, False),
+        ]
+    )
+    def test_application_service_receives_device_list_updates(
+        self,
+        experimental_feature_enabled: bool,
+        as_supports_txn_extensions: bool,
+        as_should_receive_device_list_updates: bool,
+    ):
+        """
+        Tests that an application service receives notice of changed device
+        lists for a user, when a user changes their device lists.
+
+        Arguments above are populated by parameterized.
+
+        Args:
+            as_should_receive_device_list_updates: Whether we expect the AS to receive the
+                device list changes.
+            experimental_feature_enabled: Whether the "msc3202_transaction_extensions" experimental
+                feature is enabled. This feature must be enabled for device lists to ASs to work.
+            as_supports_txn_extensions: Whether the application service has explicitly registered
+                to receive information defined by MSC3202 - which includes device list changes.
+        """
+        # Change whether the experimental feature is enabled or disabled before making
+        # device list changes
+        self.as_handler._msc3202_transaction_extensions_enabled = (
+            experimental_feature_enabled
+        )
+
+        # Create an appservice that is interested in "local_user"
+        appservice = ApplicationService(
+            token=random_string(10),
+            hostname="example.com",
+            id=random_string(10),
+            sender="@as:example.com",
+            rate_limited=False,
+            namespaces={
+                ApplicationService.NS_USERS: [
+                    {
+                        "regex": "@local_user:.+",
+                        "exclusive": False,
+                    }
+                ],
+            },
+            supports_ephemeral=True,
+            msc3202_transaction_extensions=as_supports_txn_extensions,
+            # Must be set for Synapse to try pushing data to the AS
+            hs_token="abcde",
+            url="some_url",
+        )
+
+        # Register the application service
+        self._services.append(appservice)
+
+        # Register a user on the homeserver
+        self.local_user = self.register_user("local_user", "password")
+        self.local_user_token = self.login("local_user", "password")
+
+        if as_should_receive_device_list_updates:
+            # Ensure that the resulting JSON uses the unstable prefix and contains the
+            # expected users
+            self.put_json.assert_called_once()
+            json_body = self.put_json.call_args[1]["json_body"]
+
+            # Our application service should have received a device list update with
+            # "local_user" in the "changed" list
+            device_list_dict = json_body.get("org.matrix.msc3202.device_lists", {})
+            self.assertEqual([], device_list_dict["left"])
+            self.assertEqual([self.local_user], device_list_dict["changed"])
+
+        else:
+            # No device list changes should have been sent out
+            self.put_json.assert_not_called()
 
 
 class ApplicationServicesHandlerOtkCountsTestCase(unittest.HomeserverTestCase):

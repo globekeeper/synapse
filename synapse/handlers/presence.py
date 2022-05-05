@@ -267,7 +267,6 @@ class BasePresenceHandler(abc.ABC):
             is_syncing: Whether or not the user is now syncing
             sync_time_msec: Time in ms when the user was last syncing
         """
-        pass
 
     async def update_external_syncs_clear(self, process_id: str) -> None:
         """Marks all users that had been marked as syncing by a given process
@@ -277,7 +276,6 @@ class BasePresenceHandler(abc.ABC):
 
         This is a no-op when presence is handled by a different worker.
         """
-        pass
 
     async def process_replication_rows(
         self, stream_name: str, instance_name: str, token: int, rows: list
@@ -424,13 +422,13 @@ class WorkerPresenceHandler(BasePresenceHandler):
 
     async def _on_shutdown(self) -> None:
         if self._presence_enabled:
-            self.hs.get_tcp_replication().send_command(
+            self.hs.get_replication_command_handler().send_command(
                 ClearUserSyncsCommand(self.instance_id)
             )
 
     def send_user_sync(self, user_id: str, is_syncing: bool, last_sync_ms: int) -> None:
         if self._presence_enabled:
-            self.hs.get_tcp_replication().send_user_sync(
+            self.hs.get_replication_command_handler().send_user_sync(
                 self.instance_id, user_id, is_syncing, last_sync_ms
             )
 
@@ -1032,7 +1030,7 @@ class PresenceHandler(BasePresenceHandler):
             is_syncing: Whether or not the user is now syncing
             sync_time_msec: Time in ms when the user was last syncing
         """
-        with (await self.external_sync_linearizer.queue(process_id)):
+        async with self.external_sync_linearizer.queue(process_id):
             prev_state = await self.current_state_for_user(user_id)
 
             process_presence = self.external_process_to_current_syncs.setdefault(
@@ -1073,7 +1071,7 @@ class PresenceHandler(BasePresenceHandler):
 
         Used when the process has stopped/disappeared.
         """
-        with (await self.external_sync_linearizer.queue(process_id)):
+        async with self.external_sync_linearizer.queue(process_id):
             process_presence = self.external_process_to_current_syncs.pop(
                 process_id, set()
             )
@@ -1627,7 +1625,7 @@ class PresenceEventSource(EventSource[int, UserPresenceState]):
             # We'll actually pull the presence updates for these users at the end.
             interested_and_updated_users: Union[Set[str], FrozenSet[str]] = set()
 
-            if from_key:
+            if from_key is not None:
                 # First get all users that have had a presence update
                 updated_users = stream_change_cache.get_all_entities_changed(from_key)
 

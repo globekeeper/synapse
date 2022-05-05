@@ -22,7 +22,6 @@ from typing import (
     Dict,
     Iterable,
     List,
-    NoReturn,
     Optional,
     Set,
     Tuple,
@@ -1286,7 +1285,7 @@ class EventsWorkerStore(SQLBaseStore):
         )
         return {eid for ((_rid, eid), have_event) in res.items() if have_event}
 
-    @cachedList("have_seen_event", "keys")
+    @cachedList(cached_method_name="have_seen_event", list_name="keys")
     async def _have_seen_events_dict(
         self, keys: Iterable[Tuple[str, str]]
     ) -> Dict[Tuple[str, str], bool]:
@@ -1330,10 +1329,9 @@ class EventsWorkerStore(SQLBaseStore):
         return results
 
     @cached(max_entries=100000, tree=True)
-    async def have_seen_event(self, room_id: str, event_id: str) -> NoReturn:
-        # this only exists for the benefit of the @cachedList descriptor on
-        # _have_seen_events_dict
-        raise NotImplementedError()
+    async def have_seen_event(self, room_id: str, event_id: str) -> bool:
+        res = await self._have_seen_events_dict(((room_id, event_id),))
+        return res[(room_id, event_id)]
 
     def _get_current_state_event_counts_txn(
         self, txn: LoggingTransaction, room_id: str
@@ -1954,7 +1952,7 @@ class EventsWorkerStore(SQLBaseStore):
             get_event_id_for_timestamp_txn,
         )
 
-    @cachedList("is_partial_state_event", list_name="event_ids")
+    @cachedList(cached_method_name="is_partial_state_event", list_name="event_ids")
     async def get_partial_state_events(
         self, event_ids: Collection[str]
     ) -> Dict[str, bool]:

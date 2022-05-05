@@ -50,12 +50,11 @@ REQUIREMENTS = [
     # we use the type definitions added in signedjson 1.1.
     "signedjson>=1.1.0",
     "pynacl>=1.2.1",
-    "idna>=2.5",
     # validating SSL certs for IP addresses requires service_identity 18.1.
     "service_identity>=18.1.0",
     # Twisted 18.9 introduces some logger improvements that the structured
     # logger utilises
-    "Twisted>=18.9.0",
+    "Twisted[tls]>=18.9.0",
     "treq>=15.1",
     # Twisted has required pyopenssl 16.0 since about Twisted 16.6.
     "pyopenssl>=16.0.0",
@@ -74,9 +73,13 @@ REQUIREMENTS = [
     # Note: 21.1.0 broke `/sync`, see #9936
     "attrs>=19.2.0,!=21.1.0",
     "netaddr>=0.7.18",
-    "Jinja2>=2.9",
+    # Jinja 2.x is incompatible with MarkupSafe>=2.1. To ensure that admins do not
+    # end up with a broken installation, with recent MarkupSafe but old Jinja, we
+    # add a lower bound to the Jinja2 dependency.
+    "Jinja2>=3.0",
     "bleach>=1.4.3",
-    "typing-extensions>=3.7.4",
+    # We use `ParamSpec`, which was added in `typing-extensions` 3.10.0.0.
+    "typing-extensions>=3.10.0",
     # We enforce that we have a `cryptography` version that bundles an `openssl`
     # with the latest security patches.
     "cryptography>=3.4.7",
@@ -85,6 +88,9 @@ REQUIREMENTS = [
     "matrix-common~=1.1.0",
     # We need packaging.requirements.Requirement, added in 16.1.
     "packaging>=16.1",
+    # At the time of writing, we only use functions from the version `importlib.metadata`
+    # which shipped in Python 3.8. This corresponds to version 1.4 of the backport.
+    "importlib_metadata>=1.4 ; python_version < '3.8'",
 ]
 
 CONDITIONAL_REQUIREMENTS = {

@@ -53,7 +53,6 @@ from synapse.replication.http import REPLICATION_PREFIX, ReplicationRestResource
 from synapse.replication.slave.storage._base import BaseSlavedStore
 from synapse.replication.slave.storage.account_data import SlavedAccountDataStore
 from synapse.replication.slave.storage.appservice import SlavedApplicationServiceStore
-from synapse.replication.slave.storage.client_ips import SlavedClientIpStore
 from synapse.replication.slave.storage.deviceinbox import SlavedDeviceInboxStore
 from synapse.replication.slave.storage.devices import SlavedDeviceStore
 from synapse.replication.slave.storage.directory import DirectoryStore
@@ -247,7 +246,6 @@ class GenericWorkerSlavedStore(
     SlavedApplicationServiceStore,
     SlavedRegistrationStore,
     SlavedProfileStore,
-    SlavedClientIpStore,
     SlavedFilteringStore,
     MonthlyActiveUsersWorkerStore,
     MediaRepositoryStore,
@@ -322,7 +320,8 @@ class GenericWorkerServer(HomeServer):
 
                     presence.register_servlets(self, resource)
 
-                    groups.register_servlets(self, resource)
+                    if self.config.experimental.groups_enabled:
+                        groups.register_servlets(self, resource)
 
                     resources.update({CLIENT_API_PREFIX: resource})
 
@@ -417,7 +416,7 @@ class GenericWorkerServer(HomeServer):
             else:
                 logger.warning("Unsupported listener type: %s", listener.type)
 
-        self.get_tcp_replication().start_replication(self)
+        self.get_replication_command_handler().start_replication(self)
 
 
 def start(config_options: List[str]) -> None:
